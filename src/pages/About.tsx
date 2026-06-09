@@ -23,7 +23,7 @@ export default function About() {
         </div>
 
         <div className="flex items-center justify-center gap-4">
-          <a href="#" className="flex items-center gap-1.5 text-sm transition-colors" style={{ color: 'var(--color-primary)' }}>
+          <a href="https://github.com/sherlockhomers/C_clean" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-sm transition-colors" style={{ color: 'var(--color-primary)' }}>
             <Github size={16} /> GitHub
           </a>
           <a href="#" className="flex items-center gap-1.5 text-sm transition-colors" style={{ color: 'var(--color-primary)' }}>

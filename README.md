@@ -1,0 +1,235 @@
+<div align="center">
+
+# CleanC
+
+**C 盘清理助手 — 让 C 盘焕然一新**
+
+[![Release](https://img.shields.io/github/v/release/sherlockhomers/C_clean?style=flat-square&logo=github)](https://github.com/sherlockhomers/C_clean/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square&logo=windows)](https://github.com/sherlockhomers/C_clean)
+[![Electron](https://img.shields.io/badge/Electron-33-47848F?style=flat-square&logo=electron)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)](https://react.dev/)
+
+免费 · 无广告 · 无捆绑 · 本地运行 · 不收集隐私
+
+[下载安装包](#-下载安装) · [功能介绍](#-功能特性) · [快速开始](#-快速开始) · [从源码构建](#-从源码构建) · [常见问题](#-常见问题)
+
+</div>
+
+---
+
+## 📖 简介
+
+**CleanC** 是一款面向普通 Windows 用户的 **C 盘深度清理与空间管理** 桌面工具。它把磁盘分析、垃圾清理、大文件扫描、软件/路径迁移、空间监控和 AI 助手整合在一个界面里，帮助你在 **安全可控** 的前提下释放 C 盘空间。
+
+> **设计原则**：安全第一、迁移优于删除、操作可撤销、全程透明。
+
+---
+
+## ✨ 功能特性
+
+### 核心能力
+
+| 模块 | 说明 |
+|------|------|
+| **仪表盘** | 实时展示 C 盘使用率、可释放空间、健康评分与占用趋势 |
+| **快速清理** | 扫描临时文件、浏览器缓存、回收站等，按风险等级分类，支持勾选后一键清理 |
+| **占用侦探** | 分析目录/文件类型占用，定位「谁占了 C 盘」 |
+| **深度扫描** | 大文件流式扫描、疑似重复文件检测、卸载残留扫描，实时进度反馈 |
+| **软件迁移** | 检测软件安装目录占用，识别运行中进程，支持关闭进程后迁移到其他盘 |
+| **路径迁移** | 将用户目录（文档/下载等）迁移到其他盘，支持事务回滚与撤销 |
+| **空间监控** | 记录磁盘空间快照，展示占用变化趋势 |
+| **AI 助手** | 内置对话式助手与快捷指令，降低使用门槛 |
+| **设置** | 操作历史记录、迁移撤销、安全开关持久化 |
+
+### 技术亮点
+
+- **真实磁盘操作**：基于 Node.js `fs` / `fs.statfs`，非 Mock 数据
+- **流式扫描**：大文件扫描通过 IPC 实时推送进度，避免界面卡顿
+- **安全迁移**：同盘 `rename`、跨盘备份 + 软链接，支持 `undoMigration` 撤销
+- **智能防误判**：卸载残留扫描多语言关键词交叉比对，降低误删风险
+- **性能优化**：目录扫描排除 Junction/符号链接，防止死循环；清理任务并发限制
+
+---
+
+## 📥 下载安装
+
+前往 [**Releases 发布页**](https://github.com/sherlockhomers/C_clean/releases/latest) 下载最新版本：
+
+| 文件 | 说明 | 推荐 |
+|------|------|------|
+| `CleanC_Setup_1.0.0.exe` | NSIS 安装包，支持自定义安装路径、创建桌面/开始菜单快捷方式 | ✅ 大多数用户 |
+| `CleanC_Portable_1.0.0.exe` | 绿色便携版，解压即用，不写注册表 | 免安装场景 |
+
+### 系统要求
+
+- **操作系统**：Windows 10 / 11（64 位）
+- **磁盘空间**：约 200 MB 安装空间
+- **权限**：部分清理/迁移操作可能需要管理员权限
+
+### 安装步骤（安装包）
+
+1. 下载 `CleanC_Setup_1.0.0.exe`
+2. 双击运行，按向导选择安装目录（建议非 C 盘）
+3. 完成后从桌面或开始菜单启动 **CleanC**
+
+> Windows 可能提示「未知发布者」，这是因为安装包尚未代码签名。源码完全开放，可自行审计或从源码构建。
+
+---
+
+## 🚀 快速开始
+
+```
+1. 打开 CleanC → 查看仪表盘，了解 C 盘当前状态
+2. 进入「快速清理」→ 扫描 → 勾选安全项 → 一键清理
+3. 若空间仍不足 →「深度扫描」查找大文件 / 重复文件 / 卸载残留
+4. 需要腾挪空间 →「软件迁移」或「路径迁移」将内容搬到 D/E 盘
+5. 在「设置」中查看操作历史，必要时撤销迁移
+```
+
+---
+
+## 🛠 从源码构建
+
+### 环境要求
+
+- [Node.js](https://nodejs.org/) 18+
+- npm 9+
+- Windows 10/11（构建目标平台）
+
+### 开发模式
+
+```bash
+# 克隆仓库
+git clone https://github.com/sherlockhomers/C_clean.git
+cd C_clean
+
+# 安装依赖
+npm install
+
+# 启动 Vite 开发服务器（仅前端）
+npm run dev
+
+# 或构建后启动 Electron
+npm run electron:dev
+```
+
+### 打包发布
+
+```bash
+npm run electron:build
+```
+
+构建产物默认输出到上级目录 `../CleanC-release/`，包含：
+
+- `CleanC_Setup_x.x.x.exe` — 安装包
+- `CleanC_Portable_x.x.x.exe` — 便携版
+- `win-unpacked/` — 未打包目录
+
+### 常用脚本
+
+| 命令 | 说明 |
+|------|------|
+| `npm run dev` | Vite 前端热更新开发 |
+| `npm run build` | 仅构建前端 |
+| `npm run check` | TypeScript 类型检查 |
+| `npm run electron:build` | 构建 Windows 安装包 |
+| `npm run generate-icons` | 重新生成应用图标 |
+
+---
+
+## 📁 项目结构
+
+```
+C_clean/
+├── electron/           # Electron 主进程（磁盘扫描、清理、迁移核心逻辑）
+│   ├── main.js
+│   └── preload.js
+├── src/
+│   ├── pages/          # 页面：仪表盘、快速清理、深度扫描等
+│   ├── components/     # UI 组件
+│   ├── stores/         # Zustand 状态管理
+│   └── utils/          # 工具函数
+├── public/             # 静态资源与图标
+├── package.json
+└── README.md
+```
+
+---
+
+## 🔒 安全与隐私
+
+- **本地运行**：所有扫描与清理在本地完成，不上传文件内容
+- **风险分级**：清理项标注安全 / 警告 / 危险，由用户自主选择
+- **可撤销**：路径迁移支持撤销，操作历史可回溯
+- **无广告无捆绑**：不包含第三方推广或静默安装
+
+---
+
+## ❓ 常见问题
+
+<details>
+<summary><b>清理后空间没有明显变化？</b></summary>
+
+部分文件可能被系统或其他程序占用。请关闭相关软件后重试，或使用「深度扫描」定位大文件与可迁移目录。
+
+</details>
+
+<details>
+<summary><b>迁移失败怎么办？</b></summary>
+
+前往「设置 → 操作历史」，找到对应迁移记录并执行撤销。跨盘迁移采用备份机制，降低数据丢失风险。
+
+</details>
+
+<details>
+<summary><b>杀毒软件报毒？</b></summary>
+
+未签名的 Electron 应用可能被误报。可从源码自行构建，或使用开源代码审计后添加白名单。
+
+</details>
+
+<details>
+<summary><b>支持 macOS / Linux 吗？</b></summary>
+
+当前版本仅支持 Windows。跨平台支持在规划中。
+
+</details>
+
+---
+
+## 🤝 参与贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建特性分支：`git checkout -b feature/awesome-feature`
+3. 提交更改：`git commit -m 'Add awesome feature'`
+4. 推送分支：`git push origin feature/awesome-feature`
+5. 发起 Pull Request
+
+---
+
+## 📄 许可证
+
+本项目采用 [MIT License](LICENSE) 开源。
+
+---
+
+## 🙏 致谢
+
+- [Electron](https://www.electronjs.org/) — 跨平台桌面框架
+- [React](https://react.dev/) — UI 框架
+- [Tailwind CSS](https://tailwindcss.com/) — 样式方案
+- [Lucide](https://lucide.dev/) — 图标库
+- [Zustand](https://zustand-demo.pmnd.rs/) — 轻量状态管理
+
+---
+
+<div align="center">
+
+**如果 CleanC 帮到了你，欢迎点个 ⭐ Star！**
+
+Made with ❤️ by [CleanC Team](https://github.com/sherlockhomers/C_clean)
+
+</div>
