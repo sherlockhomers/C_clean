@@ -12,7 +12,7 @@
 
 免费 · 无广告 · 无捆绑 · 本地运行 · 不收集隐私
 
-[下载安装包](#-下载安装) · [功能介绍](#-功能特性) · [快速开始](#-快速开始) · [从源码构建](#-从源码构建) · [常见问题](#-常见问题)
+[界面预览](#-界面预览) · [下载安装包](#-下载安装) · [功能介绍](#-功能特性) · [快速开始](#-快速开始) · [从源码构建](#-从源码构建) · [常见问题](#-常见问题)
 
 </div>
 
@@ -23,6 +23,42 @@
 **CleanC** 是一款面向普通 Windows 用户的 **C 盘深度清理与空间管理** 桌面工具。它把磁盘分析、垃圾清理、大文件扫描、软件/路径迁移、空间监控和 AI 助手整合在一个界面里，帮助你在 **安全可控** 的前提下释放 C 盘空间。
 
 > **设计原则**：安全第一、迁移优于删除、操作可撤销、全程透明。
+
+---
+
+## 🖼 界面预览
+
+### 仪表盘 — 一眼掌握 C 盘健康状况
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="CleanC 仪表盘：磁盘使用率、健康评分、智能分析建议" width="860" />
+</p>
+
+<p align="center"><sub>实时展示 C 盘使用率、可清理/可迁移空间、健康评分与 AI 智能建议</sub></p>
+
+### 占用侦探 — 揪出 C 盘「空间大户」
+
+<p align="center">
+  <img src="docs/screenshots/detective.png" alt="CleanC 占用侦探：TOP 榜与多维度排名" width="860" />
+</p>
+
+<p align="center"><sub>多维度 TOP 榜：软件、文件夹、文件类型、时间线、隐藏占用一目了然</sub></p>
+
+### 软件迁移 — 把大型应用搬出 C 盘
+
+<p align="center">
+  <img src="docs/screenshots/software-migrate.png" alt="CleanC 软件迁移：选择软件并生成迁移预案" width="860" />
+</p>
+
+<p align="center"><sub>自动识别可迁移软件，显示真实安装路径与占用大小，支持 AI 评估</sub></p>
+
+### AI 助手 — 零门槛智能管家
+
+<p align="center">
+  <img src="docs/screenshots/ai-assistant.png" alt="CleanC AI 助手：对话式分析与快捷指令" width="860" />
+</p>
+
+<p align="center"><sub>基于真实 C 盘数据对话分析，内置扫描/清理/迁移/分析四大类快捷指令</sub></p>
 
 ---
 
