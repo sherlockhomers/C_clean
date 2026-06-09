@@ -1,0 +1,255 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #F97316; /* Tailwind Orange 500 */
+  --color-primary-light: #FB923C; /* Tailwind Orange 400 */
+  --color-ai-start: #8B5CF6; /* Tailwind Violet 500 */
+  --color-ai-end: #3B82F6; /* Tailwind Blue 500 */
+  --color-bg: #F8FAFC; /* Tailwind Slate 50 */
+  --color-card: #FFFFFF;
+  --color-sidebar: #FFFFFF;
+  --color-text: #0F172A; /* Tailwind Slate 900 */
+  --color-text-secondary: #64748B; /* Tailwind Slate 500 */
+  --color-border: #E2E8F0; /* Tailwind Slate 200 */
+  --color-risk-safe: #10B981; /* Tailwind Emerald 500 */
+  --color-risk-warning: #F59E0B; /* Tailwind Amber 500 */
+  --color-risk-danger: #EF4444; /* Tailwind Red 500 */
+}
+
+[data-theme="dark"] {
+  --color-primary: #F97316;
+  --color-primary-light: #FB923C;
+  --color-ai-start: #A78BFA;
+  --color-ai-end: #60A5FA;
+  --color-bg: #0F172A; /* Tailwind Slate 900 */
+  --color-card: #1E293B; /* Tailwind Slate 800 */
+  --color-sidebar: #1E293B;
+  --color-text: #F8FAFC; /* Tailwind Slate 50 */
+  --color-text-secondary: #94A3B8; /* Tailwind Slate 400 */
+  --color-border: #334155; /* Tailwind Slate 700 */
+  --color-risk-safe: #34D399; /* Tailwind Emerald 400 */
+  --color-risk-warning: #FBBF24; /* Tailwind Amber 400 */
+  --color-risk-danger: #F87171; /* Tailwind Red 400 */
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  overflow: hidden;
+  height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-text-secondary);
+  border-radius: 3px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+}
+
+.gradient-primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
+}
+
+.gradient-ai {
+  background: linear-gradient(135deg, var(--color-ai-start), var(--color-ai-end));
+}
+
+.text-gradient-ai {
+  background: linear-gradient(135deg, var(--color-ai-start), var(--color-ai-end));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.border-gradient-ai {
+  border-image: linear-gradient(135deg, var(--color-ai-start), var(--color-ai-end)) 1;
+}
+
+.card-base {
+  background: var(--color-card);
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-base:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  border-color: var(--color-primary-light);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-light);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);
+}
+
+.btn-primary:active {
+  transform: scale(0.96);
+}
+
+.btn-primary:disabled,
+.btn-outline:disabled,
+.btn-ai:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-ai {
+  background: var(--color-card);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-ai:hover {
+  border-color: var(--color-ai-start);
+  color: var(--color-ai-start);
+  background: var(--color-bg);
+}
+
+.btn-ai:active {
+  transform: scale(0.96);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.btn-outline:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(249, 115, 22, 0.05);
+}
+
+.btn-outline:active {
+  transform: scale(0.96);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 107, 53, 0); }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.3; }
+  30% { opacity: 1; }
+}
+
+.typing-dot:nth-child(1) { animation: typing 1.4s infinite 0s; }
+.typing-dot:nth-child(2) { animation: typing 1.4s infinite 0.2s; }
+.typing-dot:nth-child(3) { animation: typing 1.4s infinite 0.4s; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* AI 智能流光呼吸边框 */
+@keyframes ai-glimmer {
+  0% {
+    box-shadow: 0 0 5px rgba(139, 92, 246, 0.2), 0 0 10px rgba(59, 130, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.4), 0 0 25px rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 5px rgba(139, 92, 246, 0.2), 0 0 10px rgba(59, 130, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.3);
+  }
+}
+
+.ai-card-glimmer {
+  animation: ai-glimmer 3s infinite ease-in-out;
+  border-width: 1.5px !important;
+}
+
+/* AI 正在扫描时的微光闪烁效果 */
+@keyframes shimmer-scan {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.ai-shimmer-loading {
+  background: linear-gradient(90deg, var(--color-card) 25%, rgba(139, 92, 246, 0.1) 50%, var(--color-card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer-scan 1.5s infinite linear;
+}

@@ -1,0 +1,92 @@
+{
+  "name": "cleanc",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CleanC - C盘清理助手，让C盘焕然一新",
+  "main": "electron/main.js",
+  "author": "CleanC Team",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
+    "electron:dev": "vite build && electron .",
+    "electron:build": "vite build && electron-builder --win",
+    "electron:preview": "electron .",
+    "generate-icons": "node generate-icons.js"
+  },
+  "dependencies": {
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@electron/asar": "^4.2.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.4.49",
+    "sharp": "^0.34.5",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.1"
+  },
+  "build": {
+    "appId": "com.cleanc.app",
+    "productName": "CleanC",
+    "copyright": "Copyright © 2026 CleanC Team",
+    "directories": {
+      "output": "../CleanC-release"
+    },
+    "files": [
+      "package.json",
+      "dist/**/*",
+      "electron/**/*",
+      "public/icon.png"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "public/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "win": {
+      "icon": "public/icon.png",
+      "sign": false,
+      "signAndEditExecutable": false,
+      "signingHashAlgorithms": [],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CleanC",
+      "artifactName": "CleanC_Setup_${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "CleanC_Portable_${version}.exe"
+    }
+  }
+}

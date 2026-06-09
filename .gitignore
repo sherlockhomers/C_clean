@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.npm-cache-local/
+.npm_cache/
+.electron_cache/
+.playwright-cli/
+release-v2/
+release/
+*.log
+.DS_Store
+Thumbs.db
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+flutter_err.txt
+flutter_out.txt
