@@ -26,6 +26,45 @@ interface CleanCCleanResult {
   released: number
   failed: number
   skipped: number
+  mode?: 'trash' | 'delete'
+}
+
+interface CleanCAppSettings {
+  recycleBin: boolean
+  weeklyClean: boolean
+  monthlyScanReminder: boolean
+  alertThreshold: number
+  closeToTray: boolean
+  lastAutoCleanAt: number
+  lastMonthlyReminderAt: number
+  lastLowSpaceAlertAt: number
+}
+
+interface CleanCHiddenOccupancyItem {
+  name: string
+  desc: string
+  location: string
+  size: number | null
+}
+
+interface CleanCAiChatPayload {
+  provider: string
+  apiKey?: string
+  model?: string
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+}
+
+interface CleanCAiChatResult {
+  ok: boolean
+  content?: string
+  error?: string
+}
+
+interface CleanCDeleteResult {
+  released: number
+  failed: number
+  mode: 'trash' | 'delete'
+  results: { path: string; success: boolean; size: number; error?: string }[]
 }
 
 interface CleanCLargeFile {
@@ -36,6 +75,7 @@ interface CleanCLargeFile {
   lastAccess: string
   type: 'large'
   aiNote: string
+  protected?: boolean
 }
 
 interface CleanCSoftwareInfo {
@@ -102,8 +142,8 @@ interface Window {
   cleanC?: {
     getDisks: () => Promise<CleanCDiskInfo[]>
     scanCleanItems: () => Promise<CleanCCleanItem[]>
-    cleanSelected: (ids: string[]) => Promise<CleanCCleanResult>
-    scanLargeFiles: (options: { thresholdMB: number; deadlineMs?: number; maxEntries?: number }) => Promise<CleanCLargeFile[]>
+    cleanSelected: (ids: string[], options?: { useTrash?: boolean }) => Promise<CleanCCleanResult>
+    scanLargeFiles: (options: { thresholdMB: number; deadlineMs?: number; maxEntries?: number; scope?: 'user' | 'full' }) => Promise<CleanCLargeFile[]>
     revealPath: (targetPath: string) => Promise<{ ok: boolean; error?: string }>
     migratePath: (source: string, target: string) => Promise<{ success: boolean; error?: string }>
     getSoftware: () => Promise<CleanCSoftwareInfo[]>
@@ -118,6 +158,17 @@ interface Window {
     undoMigration: (source: string, target: string) => Promise<{ success: boolean; error?: string }>
     scanDuplicateFiles: () => Promise<any[]>
     scanResidualFiles: () => Promise<any[]>
+    getSettings: () => Promise<CleanCAppSettings>
+    setSettings: (patch: Partial<CleanCAppSettings>) => Promise<CleanCAppSettings>
+    deleteItems: (paths: string[], options?: { useTrash?: boolean }) => Promise<CleanCDeleteResult>
+    selectDirectory: (title?: string) => Promise<{ ok: boolean; path?: string; canceled?: boolean }>
+    getAutoStart: () => Promise<{ ok: boolean; enabled: boolean }>
+    setAutoStart: (enabled: boolean) => Promise<{ ok: boolean; enabled?: boolean; error?: string }>
+    getHiddenOccupancy: () => Promise<CleanCHiddenOccupancyItem[]>
+    exportHistory: () => Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>
+    clearAppCache: () => Promise<{ ok: boolean; clearedBytes?: number; error?: string }>
+    aiChat: (payload: CleanCAiChatPayload) => Promise<CleanCAiChatResult>
+    setTitleBarTheme: (isDark: boolean) => Promise<{ ok: boolean }>
     onScanProgress: (callback: (data: { progress: number; currentFile: string }) => void) => () => void
     onLargeFileFound: (callback: (fileItem: any) => void) => () => void
   }
