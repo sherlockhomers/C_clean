@@ -15,7 +15,7 @@ export default function About() {
         </div>
         <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>CleanC</h2>
         <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>C盘清理助手</p>
-        <div className="text-xs mb-4" style={{ color: 'var(--color-text-secondary)' }}>版本 1.0.0</div>
+        <div className="text-xs mb-4" style={{ color: 'var(--color-text-secondary)' }}>版本 2.0.0</div>
 
         <div className="max-w-md mx-auto text-sm space-y-2 mb-6" style={{ color: 'var(--color-text-secondary)' }}>
           <p>CleanC = 技术驱动 + 纯公益 + 零门槛</p>
@@ -36,11 +36,11 @@ export default function About() {
         <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text)' }}>技术栈</h3>
         <div className="grid grid-cols-2 gap-2 text-xs">
           {[
+            ['桌面框架', 'Electron 33'],
             ['前端框架', 'React 18 + TypeScript'],
             ['样式方案', 'Tailwind CSS 3'],
             ['状态管理', 'Zustand'],
-            ['图表', '轻量 SVG'],
-            ['动画', 'CSS Transitions'],
+            ['动画', 'Framer Motion'],
             ['图标', 'Lucide React'],
           ].map(([k, v], i) => (
             <div key={i} className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: 'var(--color-bg)' }}>

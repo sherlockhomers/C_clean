@@ -1,12 +1,13 @@
 import { useDiskStore } from '../stores/useDiskStore'
 import { formatSize } from '../utils/formatSize'
+import { toast } from '../stores/useToastStore'
 import CircularProgress from '../components/shared/CircularProgress'
 import HealthScore from '../components/shared/HealthScore'
 import RiskBadge from '../components/shared/RiskBadge'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   Bot,
@@ -16,6 +17,8 @@ import {
   Sparkles,
   FolderSync,
   HardDriveDownload,
+  CheckCircle2,
+  X,
 } from 'lucide-react'
 
 const historyIconMap: Record<string, React.ElementType> = {
@@ -37,7 +40,7 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export default function Dashboard() {
-  const { disks, suggestions, loadingSystemData, systemDataError, dataSource, refreshSystemData, history, refreshHistory } = useDiskStore()
+  const { disks, suggestions, loadingSystemData, systemDataError, dataSource, refreshSystemData, history, refreshHistory, runSafeClean } = useDiskStore()
   const navigate = useNavigate()
   const bridgeReady = Boolean(window.cleanC)
   const cDrive = disks[0]
@@ -56,8 +59,64 @@ export default function Dashboard() {
     refreshHistory()
   }, [refreshSystemData, refreshHistory])
 
-  const handleOptimizeAll = () => {
-    navigate(totalCleanable > 0 ? '/quick-clean' : '/detective')
+  // 一键全面优化：扫描 → 清理安全项 → 报告，真实串联流程
+  const [optimizing, setOptimizing] = useState(false)
+  const [optimizeStage, setOptimizeStage] = useState('')
+  const [showOptimizeConfirm, setShowOptimizeConfirm] = useState(false)
+  const [pendingItems, setPendingItems] = useState<{ id: string; name: string; size: number }[]>([])
+
+  const executeOptimize = async (ids: string[]) => {
+    setShowOptimizeConfirm(false)
+    setOptimizing(true)
+    try {
+      setOptimizeStage('正在清理安全项...')
+      const result = await runSafeClean(ids)
+      const modeText = result.mode === 'trash' ? '已移入回收站' : '已彻底删除'
+      if (result.released > 0) {
+        toast.success(`一键优化完成：释放 ${formatSize(result.released)}（${modeText}），失败 ${result.failed} 项`)
+      } else {
+        toast.warning('本次没有可释放的空间，可尝试深度扫描或迁移大文件夹')
+      }
+    } finally {
+      setOptimizing(false)
+      setOptimizeStage('')
+    }
+  }
+
+  const handleOptimizeAll = async () => {
+    if (!bridgeReady) {
+      navigate('/quick-clean')
+      return
+    }
+    setOptimizing(true)
+    setOptimizeStage('正在扫描可清理项...')
+    try {
+      await refreshSystemData(true)
+      const items = useDiskStore.getState().cleanItems
+        .filter((i) => i.riskLevel === 'safe' && i.size > 0)
+        .map((i) => ({ id: i.id, name: i.name, size: i.size }))
+
+      if (items.length === 0) {
+        toast.warning('未发现可安全清理的项目，建议使用「深度扫描」查找大文件')
+        setOptimizing(false)
+        setOptimizeStage('')
+        return
+      }
+
+      // 尊重「操作二次确认」设置
+      const needConfirm = localStorage.getItem('cleanc_confirm_dialog') !== 'false'
+      if (needConfirm) {
+        setPendingItems(items)
+        setOptimizing(false)
+        setOptimizeStage('')
+        setShowOptimizeConfirm(true)
+      } else {
+        await executeOptimize(items.map((i) => i.id))
+      }
+    } catch {
+      setOptimizing(false)
+      setOptimizeStage('')
+    }
   }
 
   const commandCards = [
@@ -113,10 +172,46 @@ export default function Dashboard() {
           size="lg" 
           className="shadow-lg shadow-orange-500/20"
           onClick={handleOptimizeAll}
+          disabled={optimizing}
         >
-          <Sparkles size={18} /> 一键全面优化
+          <Sparkles size={18} className={optimizing ? 'animate-pulse' : ''} />
+          {optimizing ? (optimizeStage || '优化中...') : '一键全面优化'}
         </Button>
       </div>
+
+      {/* 一键优化确认弹窗 */}
+      {showOptimizeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="card-base p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>一键优化确认</h3>
+              <button onClick={() => setShowOptimizeConfirm(false)} style={{ color: 'var(--color-text-secondary)' }} aria-label="关闭确认弹窗">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-sm mb-3" style={{ color: 'var(--color-text)' }}>
+              将清理以下安全项，共 <span className="font-bold" style={{ color: 'var(--color-primary)' }}>
+                {formatSize(pendingItems.reduce((a, i) => a + i.size, 0))}
+              </span>：
+            </p>
+            <div className="space-y-1.5 mb-4 max-h-44 overflow-y-auto">
+              {pendingItems.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 text-xs">
+                  <CheckCircle2 size={12} className="text-green-500 flex-shrink-0" />
+                  <span style={{ color: 'var(--color-text)' }}>{item.name}</span>
+                  <span className="ml-auto" style={{ color: 'var(--color-text-secondary)' }}>{formatSize(item.size)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button className="btn-outline" onClick={() => setShowOptimizeConfirm(false)}>取消</button>
+              <button className="btn-primary" onClick={() => void executeOptimize(pendingItems.map((i) => i.id))}>
+                确认优化
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card className="overflow-hidden border-none shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
         <div className="relative p-6 bg-gradient-to-br from-orange-500 via-orange-400 to-violet-500 text-white">

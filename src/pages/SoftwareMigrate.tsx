@@ -1,37 +1,114 @@
-import { useState } from 'react'
-import { useDiskStore } from '../stores/useDiskStore'
+import { useEffect, useState } from 'react'
+import { useDiskStore, SoftwareInfo } from '../stores/useDiskStore'
 import { formatSize } from '../utils/formatSize'
 import CompatibilityBadge from '../components/shared/CompatibilityBadge'
 import {
   AlertTriangle,
   HardDriveDownload,
-  ChevronRight,
-  ChevronLeft,
   Check,
   Bot,
   ArrowRight,
+  X,
 } from 'lucide-react'
 
 const sanitizePathSegment = (value: string) =>
   value.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'UnknownApp'
 
+interface EvalResult {
+  software: SoftwareInfo
+  checking: boolean
+  running: boolean
+  processes: string[]
+  notes: string[]
+  verdict: 'good' | 'caution' | 'bad'
+}
+
+// 基于真实数据的规则评估：路径位置、体量、运行状态
+function buildEvalNotes(sw: SoftwareInfo, running: boolean, processes: string[]): { notes: string[]; verdict: EvalResult['verdict'] } {
+  const notes: string[] = []
+  let verdict: EvalResult['verdict'] = 'good'
+  const pathLower = sw.installPath.toLowerCase()
+
+  if (sw.compatibility === 'incompatible') {
+    notes.push('系统组件或微软软件，强烈不建议迁移')
+    verdict = 'bad'
+  }
+  if (pathLower.includes('program files')) {
+    notes.push('安装在 Program Files：迁移需要管理员权限，且该类软件可能注册了系统服务')
+    if (verdict === 'good') verdict = 'caution'
+  } else if (pathLower.includes('appdata')) {
+    notes.push('安装在用户目录（AppData）：权限风险低，较适合迁移')
+  }
+  if (sw.size > 5 * 1024 * 1024 * 1024) {
+    notes.push(`体量较大（${formatSize(sw.size)}）：迁移收益高，但跨盘复制耗时较长`)
+  } else if (sw.size > 0 && sw.size < 200 * 1024 * 1024) {
+    notes.push(`体量较小（${formatSize(sw.size)}）：迁移收益有限`)
+  }
+  if (running) {
+    notes.push(`检测到正在运行的进程：${processes.join(', ')}，迁移前必须关闭`)
+    if (verdict === 'good') verdict = 'caution'
+  } else {
+    notes.push('当前无相关进程在运行')
+  }
+  if (notes.length === 1) {
+    notes.push('未发现明显风险，可以迁移')
+  }
+  return { notes, verdict }
+}
+
 export default function SoftwareMigrate() {
   const { softwareList, disks } = useDiskStore()
   const [step, setStep] = useState(0)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [targetDrive, setTargetDrive] = useState('D:')
+  const [targetDrive, setTargetDrive] = useState('')
   const [planning, setPlanning] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [progressLabel, setProgressLabel] = useState('')
   const [migrationFailures, setMigrationFailures] = useState<string[]>([])
+  const [successCount, setSuccessCount] = useState(0)
   const [runningProcesses, setRunningProcesses] = useState<string[]>([])
   const [checkingProcesses, setCheckingProcesses] = useState(false)
   const [processError, setProcessError] = useState<string | null>(null)
+  const [evalResult, setEvalResult] = useState<EvalResult | null>(null)
+
+  const targetDrives = disks.filter((d) => !d.drive.toUpperCase().startsWith('C'))
+  const effectiveDrive = targetDrive || targetDrives[0]?.drive || ''
+  const [customDir, setCustomDir] = useState('')
+  const noTargetDisk = targetDrives.length === 0 && !customDir
+  // 迁移目标根目录：自定义目录优先，否则使用 <目标盘>\Apps
+  const targetBase = customDir ? customDir.replace(/\\+$/, '') : (effectiveDrive ? `${effectiveDrive}\\Apps` : '')
+
+  useEffect(() => {
+    if (!targetDrive && targetDrives[0]) {
+      setTargetDrive(targetDrives[0].drive)
+    }
+  }, [targetDrive, targetDrives])
+
+  const handlePickCustomDir = async () => {
+    if (!window.cleanC?.selectDirectory) return
+    const result = await window.cleanC.selectDirectory('选择软件迁移目标文件夹（将在其中创建软件同名子文件夹）')
+    if (result.ok && result.path) {
+      setCustomDir(result.path)
+    }
+  }
 
   const selectedSoftware = softwareList.filter((s) => selectedIds.includes(s.id))
   const totalSize = selectedSoftware.reduce((acc, s) => acc + s.size, 0)
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id])
+  }
+
+  const handleEvaluate = async (sw: SoftwareInfo) => {
+    setEvalResult({ software: sw, checking: true, running: false, processes: [], notes: [], verdict: 'good' })
+    try {
+      const result = await useDiskStore.getState().checkSoftwareRunning(sw.installPath)
+      const { notes, verdict } = buildEvalNotes(sw, result.running, result.processes)
+      setEvalResult({ software: sw, checking: false, running: result.running, processes: result.processes, notes, verdict })
+    } catch {
+      const { notes, verdict } = buildEvalNotes(sw, false, [])
+      setEvalResult({ software: sw, checking: false, running: false, processes: [], notes, verdict })
+    }
   }
 
   const handleNextStep = async () => {
@@ -85,29 +162,36 @@ export default function SoftwareMigrate() {
   const handleMigrate = async () => {
     setPlanning(true)
     setProgress(0)
+    setProgressLabel('')
     setMigrationFailures([])
+    setSuccessCount(0)
     setStep(2)
-    
-    // 模拟进度条，因为真实迁移可能需要一些时间
-    const interval = setInterval(() => {
-      setProgress((p) => Math.min(p + Math.random() * 5, 95))
-    }, 500)
 
     try {
       const failures: string[] = []
+      let succeeded = 0
+      const total = selectedSoftware.length
 
-      for (const sw of selectedSoftware) {
-        const targetPath = `${targetDrive}\\Apps\\${sanitizePathSegment(sw.name)}`
+      // 真实进度：按软件逐个迁移，进度 = 已完成数 / 总数
+      for (let i = 0; i < total; i++) {
+        const sw = selectedSoftware[i]
+        setProgressLabel(`正在迁移 ${sw.name}（${i + 1}/${total}）`)
+        setProgress(Math.round((i / total) * 100))
+
+        const targetPath = `${targetBase}\\${sanitizePathSegment(sw.name)}`
         const result = await useDiskStore.getState().migratePath(sw.installPath, targetPath)
-        if (!result.success) {
+        if (result.success) {
+          succeeded += 1
+        } else {
           failures.push(`${sw.name}: ${result.error || '未知错误'}`)
         }
       }
 
       setMigrationFailures(failures)
+      setSuccessCount(succeeded)
     } finally {
-      clearInterval(interval)
       setProgress(100)
+      setProgressLabel('迁移流程结束')
       setTimeout(() => {
         setPlanning(false)
         setStep(3)
@@ -124,9 +208,15 @@ export default function SoftwareMigrate() {
           <HardDriveDownload size={24} style={{ color: 'var(--color-primary)' }} /> 软件迁移
         </h1>
         <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-          生成迁移预案；真实迁移将在校验与回滚能力完善后开放
+          基于注册表真实扫描 C 盘软件，检测占用进程后执行软链接迁移；建议以管理员身份运行以迁移 Program Files 下的软件
         </p>
       </div>
+
+      {noTargetDisk && (
+        <div className="p-3 rounded-lg text-xs flex items-center gap-2 bg-red-50 text-red-700 border border-red-200">
+          <AlertTriangle size={14} /> 未检测到除 C 盘以外的磁盘，无法进行迁移。
+        </div>
+      )}
 
       {/* Stepper */}
       <div className="card-base p-4">
@@ -165,7 +255,7 @@ export default function SoftwareMigrate() {
             <button
               className="btn-primary text-xs !py-1.5"
               onClick={handleNextStep}
-              disabled={selectedIds.length === 0}
+              disabled={selectedIds.length === 0 || noTargetDisk}
             >
               下一步
             </button>
@@ -197,14 +287,19 @@ export default function SoftwareMigrate() {
                 </div>
                 <p className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>{sw.installPath}</p>
               </div>
-              <div className="text-sm font-bold" style={{ color: 'var(--color-primary)' }}>{formatSize(sw.size)}</div>
+              <div className="text-sm font-bold" style={{ color: 'var(--color-primary)' }}>
+                {sw.size > 0 ? formatSize(sw.size) : '大小未知'}
+              </div>
               {sw.compatibility === 'compatible' && (
                 <button
                   type="button"
                   className="btn-ai text-xs !py-1 flex items-center gap-1"
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void handleEvaluate(sw)
+                  }}
                 >
-                  <Bot size={12} /> AI评估
+                  <Bot size={12} /> 迁移评估
                 </button>
               )}
             </div>
@@ -221,25 +316,43 @@ export default function SoftwareMigrate() {
                 <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{sw.name}</span>
                 <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>{sw.installPath}</span>
                 <ArrowRight size={14} style={{ color: 'var(--color-primary)' }} />
-                <span className="text-xs font-mono" style={{ color: 'var(--color-primary)' }}>{targetDrive}\\Apps\\{sw.name}</span>
-                <span className="text-xs ml-auto" style={{ color: 'var(--color-text-secondary)' }}>{formatSize(sw.size)}</span>
+                <span className="text-xs font-mono" style={{ color: 'var(--color-primary)' }}>{targetBase}\\{sanitizePathSegment(sw.name)}</span>
+                <span className="text-xs ml-auto" style={{ color: 'var(--color-text-secondary)' }}>{sw.size > 0 ? formatSize(sw.size) : '大小未知'}</span>
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm" style={{ color: 'var(--color-text)' }}>目标磁盘:</span>
-            <select
-              value={targetDrive}
-              onChange={(e) => setTargetDrive(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border text-sm outline-none"
-              style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            {!customDir && (
+              <select
+                value={effectiveDrive}
+                onChange={(e) => setTargetDrive(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border text-sm outline-none"
+                style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                aria-label="选择迁移目标磁盘"
+              >
+                {targetDrives.map((d) => (
+                  <option key={d.drive} value={d.drive}>
+                    {d.drive} ({formatSize(d.available)} 可用)
+                  </option>
+                ))}
+              </select>
+            )}
+            {customDir && (
+              <span className="flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                {customDir}
+                <button onClick={() => setCustomDir('')} aria-label="清除自定义目录" className="ml-1 hover:text-red-500">
+                  <X size={12} />
+                </button>
+              </span>
+            )}
+            <button
+              className="px-3 py-1.5 rounded-lg border text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+              onClick={handlePickCustomDir}
             >
-              {disks.slice(1).map((d) => (
-                <option key={d.drive} value={d.drive}>
-                  {d.drive} ({formatSize(d.available)} 可用)
-                </option>
-              ))}
-            </select>
+              自定义目录...
+            </button>
           </div>
 
           {/* 进程占用检测 UI */}
@@ -312,7 +425,7 @@ export default function SoftwareMigrate() {
             <HardDriveDownload size={32} className="text-white" />
           </div>
           <p className="text-base font-medium" style={{ color: 'var(--color-text)' }}>{planning ? '正在执行底层软链接迁移...' : '迁移即将完成...'}</p>
-          <p className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>正在跨盘复制文件，请勿关闭软件</p>
+          <p className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>{progressLabel || '正在跨盘复制文件，请勿关闭软件'}</p>
           <div className="mt-6 max-w-md mx-auto">
             <div className="h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
               <div
@@ -337,12 +450,14 @@ export default function SoftwareMigrate() {
             <Check size={40} className="text-emerald-500" />
           </div>
           <h3 className="text-xl font-bold mb-3" style={{ color: 'var(--color-text)' }}>
-            {migrationFailures.length > 0 ? '迁移完成，部分失败' : '迁移成功！'}
+            {migrationFailures.length > 0
+              ? (successCount > 0 ? '迁移完成，部分失败' : '迁移失败')
+              : '迁移成功！'}
           </h3>
           <p className="text-sm mb-5" style={{ color: 'var(--color-text-secondary)' }}>
-            已处理 {selectedSoftware.length} 个软件，目标位置为 {targetDrive}。
-            {migrationFailures.length === 0 && (
-              <> 为你释放了 <span className="font-bold text-[var(--color-primary)]">{formatSize(totalSize)}</span> 的 C 盘空间。</>
+            成功 {successCount} 个，失败 {migrationFailures.length} 个，目标位置为 {targetBase}。
+            {successCount > 0 && migrationFailures.length === 0 && (
+              <> 预计释放约 <span className="font-bold text-[var(--color-primary)]">{formatSize(totalSize)}</span>（按安装大小估算）。</>
             )}
           </p>
           {migrationFailures.length > 0 && (
@@ -357,11 +472,66 @@ export default function SoftwareMigrate() {
             <strong className="block mb-1">软链接状态</strong>
             {migrationFailures.length > 0
               ? '成功项已通过软链接生效，失败项未完成迁移，请根据上方错误处理后重试。'
-              : `操作系统和快捷方式仍会认为软件安装在 C 盘，但文件已经存放在了 ${targetDrive}。`}
+              : `操作系统和快捷方式仍会认为软件安装在 C 盘，但文件已经存放在了 ${targetBase}。如需恢复可在「设置 → 操作历史」中撤销。`}
           </div>
           <button className="btn-primary mt-6 px-8" onClick={() => { setStep(0); setSelectedIds([]); }}>
             完成
           </button>
+        </div>
+      )}
+
+      {/* 迁移评估弹窗（基于真实路径 / 体量 / 进程状态的规则评估） */}
+      {evalResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="card-base p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--color-text)' }}>
+                <Bot size={18} style={{ color: 'var(--color-ai-start)' }} /> 迁移评估：{evalResult.software.name}
+              </h3>
+              <button onClick={() => setEvalResult(null)} style={{ color: 'var(--color-text-secondary)' }} aria-label="关闭评估弹窗">
+                <X size={20} />
+              </button>
+            </div>
+            {evalResult.checking ? (
+              <div className="flex items-center gap-2 text-sm py-6 justify-center" style={{ color: 'var(--color-text-secondary)' }}>
+                <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--color-primary)' }} />
+                正在检测真实进程占用与安装信息...
+              </div>
+            ) : (
+              <>
+                <div
+                  className="p-3 rounded-lg text-sm font-medium mb-3"
+                  style={{
+                    backgroundColor: evalResult.verdict === 'good' ? 'rgba(16,185,129,0.08)' : evalResult.verdict === 'caution' ? 'rgba(245,158,11,0.08)' : 'rgba(239,68,68,0.08)',
+                    color: evalResult.verdict === 'good' ? '#059669' : evalResult.verdict === 'caution' ? '#d97706' : '#dc2626',
+                  }}
+                >
+                  {evalResult.verdict === 'good' ? '结论：适合迁移' : evalResult.verdict === 'caution' ? '结论：可迁移，但需注意以下事项' : '结论：不建议迁移'}
+                </div>
+                <ul className="space-y-1.5 text-xs mb-4 list-disc pl-5" style={{ color: 'var(--color-text)' }}>
+                  {evalResult.notes.map((note, i) => (
+                    <li key={i}>{note}</li>
+                  ))}
+                </ul>
+                <div className="flex gap-2 justify-end">
+                  <button className="btn-outline" onClick={() => setEvalResult(null)}>关闭</button>
+                  {evalResult.verdict !== 'bad' && (
+                    <button
+                      className="btn-primary"
+                      onClick={() => {
+                        if (!selectedIds.includes(evalResult.software.id)) {
+                          toggleSelect(evalResult.software.id)
+                        }
+                        setEvalResult(null)
+                      }}
+                    >
+                      选中此软件
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

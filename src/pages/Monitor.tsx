@@ -62,13 +62,36 @@ function formatDateTime(ts: number): string {
 export default function Monitor() {
   const { disks, spaceTimeline, history, refreshSpaceTimeline, refreshHistory } = useDiskStore()
   const [alertThreshold, setAlertThreshold] = useState(10)
-  const [weeklyClean, setWeeklyClean] = useState(true)
+  const [weeklyClean, setWeeklyClean] = useState(false)
   const [monthlyScan, setMonthlyScan] = useState(false)
+  const bridgeReady = Boolean(window.cleanC)
 
   useEffect(() => {
     refreshSpaceTimeline()
     refreshHistory()
   }, [refreshSpaceTimeline, refreshHistory])
+
+  // 从主进程读取持久化设置，保证刷新/重启后状态一致
+  useEffect(() => {
+    window.cleanC?.getSettings?.().then((s) => {
+      setAlertThreshold(s.alertThreshold)
+      setWeeklyClean(s.weeklyClean)
+      setMonthlyScan(s.monthlyScanReminder)
+    }).catch(() => {})
+  }, [])
+
+  const handleAlertThresholdChange = (value: number) => {
+    setAlertThreshold(value)
+    void window.cleanC?.setSettings?.({ alertThreshold: value })
+  }
+  const handleWeeklyCleanChange = (value: boolean) => {
+    setWeeklyClean(value)
+    void window.cleanC?.setSettings?.({ weeklyClean: value })
+  }
+  const handleMonthlyScanChange = (value: boolean) => {
+    setMonthlyScan(value)
+    void window.cleanC?.setSettings?.({ monthlyScanReminder: value })
+  }
 
   const cDrive = disks[0]
 
@@ -162,7 +185,7 @@ export default function Monitor() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm" style={{ color: 'var(--color-text)' }}>空间不足告警</div>
-              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>当C盘可用空间低于阈值时提醒</div>
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>C盘可用空间低于阈值时发送系统通知（应用运行期间每小时检查）</div>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -170,7 +193,7 @@ export default function Monitor() {
                 min={5}
                 max={30}
                 value={alertThreshold}
-                onChange={(e) => setAlertThreshold(Number(e.target.value))}
+                onChange={(e) => handleAlertThresholdChange(Number(e.target.value))}
                 className="w-24 accent-orange-500"
                 aria-label="空间告警阈值"
               />
@@ -201,25 +224,27 @@ export default function Monitor() {
             <div className="flex items-center gap-3">
               <Calendar size={16} style={{ color: 'var(--color-primary)' }} />
               <div>
-                <div className="text-sm" style={{ color: 'var(--color-text)' }}>每周安全清理</div>
-                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>每周三 02:00</div>
+                <div className="text-sm" style={{ color: 'var(--color-text)' }}>每周自动清理</div>
+                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>每 7 天自动清理一次安全项（用户临时文件、浏览器缓存），完成后发送通知</div>
               </div>
             </div>
-            <ToggleSwitch checked={weeklyClean} onChange={setWeeklyClean} />
+            <ToggleSwitch checked={weeklyClean} onChange={handleWeeklyCleanChange} />
           </div>
           <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: 'var(--color-bg)' }}>
             <div className="flex items-center gap-3">
               <Calendar size={16} style={{ color: 'var(--color-primary)' }} />
               <div>
-                <div className="text-sm" style={{ color: 'var(--color-text)' }}>每月深度扫描</div>
-                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>每月1日 03:00</div>
+                <div className="text-sm" style={{ color: 'var(--color-text)' }}>每月深度扫描提醒</div>
+                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>每 30 天发送一次系统通知，提醒进行深度扫描</div>
               </div>
             </div>
-            <ToggleSwitch checked={monthlyScan} onChange={setMonthlyScan} />
+            <ToggleSwitch checked={monthlyScan} onChange={handleMonthlyScanChange} />
           </div>
         </div>
         <p className="text-xs mt-3" style={{ color: 'var(--color-text-secondary)' }}>
-          计划任务开关将在后台调度能力上线后生效，当前为偏好设置
+          {bridgeReady
+            ? '以上计划在 CleanC 运行期间自动执行（每小时检查一次）；应用关闭期间不会执行'
+            : '网页预览模式下计划任务不生效，请在桌面版中使用'}
         </p>
       </div>
 

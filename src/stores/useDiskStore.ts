@@ -56,6 +56,7 @@ export interface CleanResult {
   released: number
   failed: number
   skipped: number
+  mode?: 'trash' | 'delete'
 }
 
 export interface SystemFolderInfo {
@@ -176,7 +177,12 @@ const mockSuggestions: SuggestionItem[] = [
 
 const mockMigrationSuggestions = mockSuggestions.filter((item) => item.type !== 'clean' && item.type !== 'alert')
 
-const buildSuggestions = (cleanItems: CleanItem[], disks: DiskInfo[]): SuggestionItem[] => {
+const buildSuggestions = (
+  cleanItems: CleanItem[],
+  disks: DiskInfo[],
+  systemFolders: SystemFolderInfo[],
+  isRealData: boolean
+): SuggestionItem[] => {
   const cDrive = disks.find((disk) => disk.drive.toUpperCase().startsWith('C')) || disks[0]
   const cleanSuggestions = cleanItems
     .filter((item) => item.size > 0)
@@ -204,7 +210,24 @@ const buildSuggestions = (cleanItems: CleanItem[], disks: DiskInfo[]): Suggestio
       }]
     : []
 
-  return [...cleanSuggestions, ...alertSuggestion, ...mockMigrationSuggestions]
+  // 真实数据模式：迁移建议来自真实扫描到的系统文件夹；仅网页演示模式才展示示例数据
+  const migrationSuggestions: SuggestionItem[] = isRealData
+    ? systemFolders
+        .filter((folder) => folder.size > 300 * 1024 * 1024 && folder.targetPath)
+        .sort((a, b) => b.size - a.size)
+        .slice(0, 3)
+        .map<SuggestionItem>((folder) => ({
+          id: `migrate-${folder.id}`,
+          type: 'migrate',
+          title: `迁移「${folder.name}」到 ${folder.targetPath.slice(0, 2)} 盘`,
+          description: `${folder.path} → ${folder.targetPath}（软链接迁移，可撤销）`,
+          size: folder.size,
+          riskLevel: 'safe',
+          action: '去迁移',
+        }))
+    : mockMigrationSuggestions
+
+  return [...cleanSuggestions, ...alertSuggestion, ...migrationSuggestions]
 }
 
 const mergeSelection = (nextItems: CleanItem[], currentItems: CleanItem[]) => {
@@ -286,7 +309,7 @@ export const useDiskStore = create<DiskState>((set, get) => ({
         cleanItems: nextCleanItems,
         softwareList: nextSoftware,
         systemFolders: nextSystemFolders,
-        suggestions: buildSuggestions(nextCleanItems, nextDisks),
+        suggestions: buildSuggestions(nextCleanItems, nextDisks, nextSystemFolders, true),
         dataSource: 'system',
         loadingSystemData: false,
         systemDataError: null,
@@ -307,7 +330,9 @@ export const useDiskStore = create<DiskState>((set, get) => ({
       return result
     }
 
-    const result = await bridge.cleanSelected(ids)
+    // 读取「删除文件先进回收站」设置，透传给主进程真实生效
+    const useTrash = localStorage.getItem('cleanc_recycle_bin') !== 'false'
+    const result = await bridge.cleanSelected(ids, { useTrash })
     set({ lastCleanResult: result })
     await get().refreshSystemData(true)
     await get().refreshHistory()

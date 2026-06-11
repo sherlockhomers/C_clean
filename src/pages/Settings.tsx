@@ -2,7 +2,16 @@ import { useState, useEffect } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import { useDiskStore } from '../stores/useDiskStore'
 import { formatSize } from '../utils/formatSize'
+import { toast } from '../stores/useToastStore'
 import { Settings as SettingsIcon, Moon, Sun, Monitor, Bot, Shield, Database, History, RotateCcw, AlertCircle } from 'lucide-react'
+
+const AI_PROVIDER_OPTIONS = [
+  { value: 'gemini', label: 'Google Gemini', defaultModel: 'gemini-2.0-flash', needKey: true },
+  { value: 'openai', label: 'OpenAI', defaultModel: 'gpt-4o-mini', needKey: true },
+  { value: 'qwen', label: '通义千问（DashScope）', defaultModel: 'qwen-plus', needKey: true },
+  { value: 'deepseek', label: 'DeepSeek', defaultModel: 'deepseek-chat', needKey: true },
+  { value: 'ollama', label: 'Ollama（本地，无需 Key）', defaultModel: 'llama3.1', needKey: false },
+]
 
 interface HistoryRecord {
   id: string
@@ -21,7 +30,6 @@ export default function Settings() {
   const { theme, setTheme } = useAppStore()
   const [offlineMode, setOfflineMode] = useState(() => localStorage.getItem('cleanc_offline_mode') === 'true')
   const [recycleBin, setRecycleBin] = useState(() => localStorage.getItem('cleanc_recycle_bin') !== 'false')
-  const [restorePoint, setRestorePoint] = useState(() => localStorage.getItem('cleanc_restore_point') !== 'false')
   const [confirmDialog, setConfirmDialog] = useState(() => localStorage.getItem('cleanc_confirm_dialog') !== 'false')
 
   const handleOfflineModeChange = (val: boolean) => {
@@ -31,14 +39,124 @@ export default function Settings() {
   const handleRecycleBinChange = (val: boolean) => {
     setRecycleBin(val)
     localStorage.setItem('cleanc_recycle_bin', String(val))
-  }
-  const handleRestorePointChange = (val: boolean) => {
-    setRestorePoint(val)
-    localStorage.setItem('cleanc_restore_point', String(val))
+    // 同步到主进程持久化设置，自动清理等后台任务也会遵循该选项
+    void window.cleanC?.setSettings({ recycleBin: val })
   }
   const handleConfirmDialogChange = (val: boolean) => {
     setConfirmDialog(val)
     localStorage.setItem('cleanc_confirm_dialog', String(val))
+  }
+
+  // AI 配置：持久化并被 AI 助手真实使用
+  const [aiProvider, setAiProvider] = useState(() => localStorage.getItem('cleanc_ai_provider') || 'gemini')
+  const [aiKey, setAiKey] = useState(() => localStorage.getItem('cleanc_ai_key') || '')
+  const [aiModel, setAiModel] = useState(() => localStorage.getItem('cleanc_ai_model') || '')
+  const [testingAI, setTestingAI] = useState(false)
+
+  const currentProvider = AI_PROVIDER_OPTIONS.find((p) => p.value === aiProvider) || AI_PROVIDER_OPTIONS[0]
+
+  const handleAiProviderChange = (val: string) => {
+    setAiProvider(val)
+    localStorage.setItem('cleanc_ai_provider', val)
+  }
+  const handleAiKeyChange = (val: string) => {
+    setAiKey(val)
+    localStorage.setItem('cleanc_ai_key', val)
+  }
+  const handleAiModelChange = (val: string) => {
+    setAiModel(val)
+    localStorage.setItem('cleanc_ai_model', val)
+  }
+
+  const handleTestAI = async () => {
+    if (!window.cleanC?.aiChat) {
+      toast.error('网页预览模式无法连接大模型，请在桌面版中使用')
+      return
+    }
+    setTestingAI(true)
+    try {
+      const result = await window.cleanC.aiChat({
+        provider: aiProvider,
+        apiKey: aiKey || undefined,
+        model: aiModel || undefined,
+        messages: [{ role: 'user', content: '请回复“连接成功”四个字' }],
+      })
+      if (result.ok) {
+        toast.success(`连接成功：${(result.content || '').slice(0, 40)}`)
+      } else {
+        toast.error(`连接失败：${result.error || '未知错误'}`)
+      }
+    } finally {
+      setTestingAI(false)
+    }
+  }
+
+  const [exporting, setExporting] = useState(false)
+  const [clearingCache, setClearingCache] = useState(false)
+
+  // 系统集成：托盘常驻 + 开机自启
+  const [closeToTray, setCloseToTray] = useState(true)
+  const [autoStart, setAutoStart] = useState(false)
+
+  useEffect(() => {
+    window.cleanC?.getSettings?.().then((s) => setCloseToTray(s.closeToTray)).catch(() => {})
+    window.cleanC?.getAutoStart?.().then((r) => setAutoStart(r.enabled)).catch(() => {})
+  }, [])
+
+  const handleCloseToTrayChange = (val: boolean) => {
+    setCloseToTray(val)
+    void window.cleanC?.setSettings?.({ closeToTray: val })
+  }
+
+  const handleAutoStartChange = async (val: boolean) => {
+    if (!window.cleanC?.setAutoStart) {
+      toast.error('网页预览模式不支持，请在桌面版中使用')
+      return
+    }
+    setAutoStart(val)
+    const result = await window.cleanC.setAutoStart(val)
+    if (result.ok) {
+      toast.success(val ? '已开启开机自启（登录后静默启动到托盘）' : '已关闭开机自启')
+    } else {
+      setAutoStart(!val)
+      toast.error(result.error || '设置失败')
+    }
+  }
+
+  const handleExportHistory = async () => {
+    if (!window.cleanC?.exportHistory) {
+      toast.error('网页预览模式不支持导出，请在桌面版中使用')
+      return
+    }
+    setExporting(true)
+    try {
+      const result = await window.cleanC.exportHistory()
+      if (result.ok) {
+        toast.success(`日志已导出到：${result.path}`)
+      } else if (!result.canceled) {
+        toast.error(`导出失败：${result.error || '未知错误'}`)
+      }
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleClearAppCache = async () => {
+    if (!window.cleanC?.clearAppCache) {
+      toast.error('网页预览模式不支持，请在桌面版中使用')
+      return
+    }
+    setClearingCache(true)
+    try {
+      const result = await window.cleanC.clearAppCache()
+      if (result.ok) {
+        toast.success(`已清理应用缓存 ${formatSize(result.clearedBytes || 0)}`)
+      } else {
+        toast.error(`清理失败：${result.error || '未知错误'}`)
+      }
+    } finally {
+      setClearingCache(false)
+    }
   }
 
   const [history, setHistory] = useState<HistoryRecord[]>([])
@@ -157,35 +275,56 @@ export default function Settings() {
           <div>
             <div className="text-sm mb-1" style={{ color: 'var(--color-text)' }}>AI 服务商</div>
             <select
+              value={aiProvider}
+              onChange={(e) => handleAiProviderChange(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border text-sm"
               style={{ backgroundColor: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+              aria-label="选择 AI 服务商"
             >
-              <option>Google Gemini (免费)</option>
-              <option>OpenAI GPT-4o-mini</option>
-              <option>通义千问 (免费)</option>
-              <option>DeepSeek</option>
-              <option>Ollama (本地)</option>
+              {AI_PROVIDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
           <div>
-            <div className="text-sm mb-1" style={{ color: 'var(--color-text)' }}>API Key (可选)</div>
+            <div className="text-sm mb-1" style={{ color: 'var(--color-text)' }}>
+              API Key {currentProvider.needKey ? '（必填）' : '（本地服务无需填写）'}
+            </div>
             <input
               type="password"
-              placeholder="输入你的 API Key..."
+              value={aiKey}
+              onChange={(e) => handleAiKeyChange(e.target.value)}
+              placeholder={currentProvider.needKey ? '输入你的 API Key...' : '本地 Ollama 无需 Key'}
               className="w-full px-3 py-2 rounded-lg border text-sm"
               style={{ backgroundColor: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
             />
             <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-              不填写则使用内置免费额度，填写后可突破速率限制
+              {currentProvider.needKey
+                ? '配置后 AI 助手将调用真实大模型；不配置则使用本地规则引擎（基于真实磁盘数据）'
+                : '需要本机已启动 Ollama 服务（127.0.0.1:11434）'}
             </p>
+          </div>
+          <div>
+            <div className="text-sm mb-1" style={{ color: 'var(--color-text)' }}>模型名称（可选）</div>
+            <input
+              type="text"
+              value={aiModel}
+              onChange={(e) => handleAiModelChange(e.target.value)}
+              placeholder={`默认：${currentProvider.defaultModel}`}
+              className="w-full px-3 py-2 rounded-lg border text-sm"
+              style={{ backgroundColor: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
           </div>
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm" style={{ color: 'var(--color-text)' }}>离线模式</div>
-              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>不联网时使用本地规则引擎</div>
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>开启后不联网，AI 助手仅使用本地规则引擎</div>
             </div>
             <ToggleSwitch checked={offlineMode} onChange={handleOfflineModeChange} />
           </div>
+          <button className="btn-outline text-xs !py-1.5" onClick={handleTestAI} disabled={testingAI}>
+            {testingAI ? '正在测试连接...' : '测试连接'}
+          </button>
         </div>
       </div>
 
@@ -198,23 +337,45 @@ export default function Settings() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm" style={{ color: 'var(--color-text)' }}>删除文件先进回收站</div>
-              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>删除的文件先进回收站而非永久删除</div>
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                开启：清理项移入系统回收站，可恢复；关闭：直接彻底删除，立即释放空间
+              </div>
             </div>
             <ToggleSwitch checked={recycleBin} onChange={handleRecycleBinChange} />
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm" style={{ color: 'var(--color-text)' }}>迁移前创建还原点</div>
-              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>每次迁移前自动创建系统还原点</div>
+              <div className="text-sm" style={{ color: 'var(--color-text)' }}>操作二次确认</div>
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>执行迁移/撤销前弹出确认对话框</div>
             </div>
-            <ToggleSwitch checked={restorePoint} onChange={handleRestorePointChange} />
+            <ToggleSwitch checked={confirmDialog} onChange={handleConfirmDialogChange} />
+          </div>
+        </div>
+      </div>
+
+      {/* System Integration */}
+      <div className="card-base p-5 space-y-4">
+        <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--color-text)' }}>
+          <Monitor size={16} style={{ color: 'var(--color-primary)' }} /> 系统集成
+        </h3>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm" style={{ color: 'var(--color-text)' }}>关闭时最小化到托盘</div>
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                点关闭按钮后驻留托盘，每周自动清理与低空间告警持续生效；从托盘菜单可彻底退出
+              </div>
+            </div>
+            <ToggleSwitch checked={closeToTray} onChange={handleCloseToTrayChange} />
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm" style={{ color: 'var(--color-text)' }}>操作二次确认</div>
-              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>执行清理/迁移前弹出确认对话框</div>
+              <div className="text-sm" style={{ color: 'var(--color-text)' }}>开机自启动</div>
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                通过系统计划任务实现（兼容管理员权限），登录后静默启动到托盘
+              </div>
             </div>
-            <ToggleSwitch checked={confirmDialog} onChange={handleConfirmDialogChange} />
+            <ToggleSwitch checked={autoStart} onChange={handleAutoStartChange} />
           </div>
         </div>
       </div>
@@ -225,8 +386,15 @@ export default function Settings() {
           <Database size={16} style={{ color: 'var(--color-primary)' }} /> 数据管理
         </h3>
         <div className="space-y-2">
-          <button className="btn-outline text-xs !py-1.5">导出操作日志</button>
-          <button className="btn-outline text-xs !py-1.5 ml-2">清理缓存数据</button>
+          <button className="btn-outline text-xs !py-1.5" onClick={handleExportHistory} disabled={exporting}>
+            {exporting ? '导出中...' : '导出操作日志'}
+          </button>
+          <button className="btn-outline text-xs !py-1.5 ml-2" onClick={handleClearAppCache} disabled={clearingCache}>
+            {clearingCache ? '清理中...' : '清理应用缓存'}
+          </button>
+          <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            导出为 JSON（含操作历史与空间快照）；清理应用缓存仅清除 CleanC 自身的网页缓存，不影响你的文件
+          </p>
         </div>
       </div>
 

@@ -106,13 +106,13 @@ function TimelineArea({ points }: { points: { date: string; used: number }[] }) 
   )
 }
 
-const hiddenOccupancyInfo = [
-  { name: '系统还原 / 卷影副本', desc: '系统还原点，可在“系统保护”中调整', location: 'System Volume Information' },
-  { name: '休眠文件 hiberfil.sys', desc: '休眠功能产生，可用 powercfg /h off 关闭', location: 'C:\\hiberfil.sys' },
-  { name: '虚拟内存 pagefile.sys', desc: '页面文件，可在“虚拟内存”设置中调整', location: 'C:\\pagefile.sys' },
-  { name: 'WSL 子系统', desc: 'Linux 子系统磁盘镜像', location: '%LOCALAPPDATA%\\Packages' },
-  { name: 'Docker 镜像', desc: '容器镜像与卷数据', location: '%LOCALAPPDATA%\\Docker' },
-  { name: 'Windows Search 索引', desc: '搜索索引数据库', location: 'ProgramData\\Microsoft\\Search' },
+const hiddenOccupancyFallback: CleanCHiddenOccupancyItem[] = [
+  { name: '系统还原 / 卷影副本', desc: '系统还原点，可在“系统保护”中调整', location: 'System Volume Information', size: null },
+  { name: '休眠文件 hiberfil.sys', desc: '休眠功能产生，可用 powercfg /h off 关闭', location: 'C:\\hiberfil.sys', size: null },
+  { name: '虚拟内存 pagefile.sys', desc: '页面文件，可在“虚拟内存”设置中调整', location: 'C:\\pagefile.sys', size: null },
+  { name: 'WSL 子系统', desc: 'Linux 子系统磁盘镜像', location: '%LOCALAPPDATA%\\Packages', size: null },
+  { name: 'Docker 数据', desc: '容器镜像与卷数据', location: '%LOCALAPPDATA%\\Docker', size: null },
+  { name: 'Windows Search 索引', desc: '搜索索引数据库', location: 'ProgramData\\Microsoft\\Search', size: null },
 ]
 
 export default function Detective() {
@@ -131,11 +131,30 @@ export default function Detective() {
   const bridgeReady = Boolean(window.cleanC)
   const isReal = occupancyLoadedAt > 0
 
+  // 隐藏占用：真实检测（休眠文件 / 页面文件 / WSL / Docker 等）
+  const [hiddenItems, setHiddenItems] = useState<CleanCHiddenOccupancyItem[]>(hiddenOccupancyFallback)
+  const [hiddenLoading, setHiddenLoading] = useState(false)
+  const [hiddenLoaded, setHiddenLoaded] = useState(false)
+
   useEffect(() => {
     refreshOccupancy()
     refreshFileTypeStats()
     refreshSpaceTimeline()
   }, [refreshOccupancy, refreshFileTypeStats, refreshSpaceTimeline])
+
+  useEffect(() => {
+    if (activeTab !== 'hidden' || hiddenLoaded || !window.cleanC?.getHiddenOccupancy) return
+    setHiddenLoading(true)
+    window.cleanC.getHiddenOccupancy()
+      .then((items) => {
+        if (Array.isArray(items) && items.length > 0) {
+          setHiddenItems(items)
+        }
+        setHiddenLoaded(true)
+      })
+      .catch(() => {})
+      .finally(() => setHiddenLoading(false))
+  }, [activeTab, hiddenLoaded])
 
   const folderRecords = useMemo(
     () => occupancyRecords.filter((r) => r.category === 'folder'),
@@ -387,18 +406,25 @@ export default function Detective() {
       {/* 隐藏占用 */}
       {activeTab === 'hidden' && (
         <div className="card-base p-5 space-y-3">
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>隐藏占用参考</h3>
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
+            隐藏占用{hiddenLoading ? '（正在真实检测...）' : hiddenLoaded ? '（真实检测结果）' : ''}
+          </h3>
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-            以下为常见的隐藏空间占用类型及其位置。精确大小检测需要管理员权限，将在后续版本开放。
+            {bridgeReady
+              ? '已对常见隐藏占用进行真实检测；显示「需管理员权限」的项目请以管理员身份运行后查看。'
+              : '网页预览模式仅展示项目说明，请在桌面版中查看真实大小。'}
           </p>
-          {hiddenOccupancyInfo.map((item, i) => (
+          {hiddenItems.map((item, i) => (
             <div key={i} className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: 'var(--color-bg)' }}>
               <Eye size={16} style={{ color: 'var(--color-primary)' }} />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{item.name}</div>
                 <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{item.desc}</div>
               </div>
-              <span className="text-xs font-mono truncate max-w-[40%]" style={{ color: 'var(--color-text-secondary)' }}>{item.location}</span>
+              <span className="text-sm font-bold flex-shrink-0" style={{ color: item.size != null ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>
+                {item.size != null ? formatSize(item.size) : (hiddenLoaded ? '需管理员权限' : '—')}
+              </span>
+              <span className="text-xs font-mono truncate max-w-[30%]" style={{ color: 'var(--color-text-secondary)' }}>{item.location}</span>
             </div>
           ))}
         </div>

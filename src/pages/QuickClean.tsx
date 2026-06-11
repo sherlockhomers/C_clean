@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useDiskStore } from '../stores/useDiskStore'
+import { useDiskStore, CleanResult } from '../stores/useDiskStore'
 import { formatSize } from '../utils/formatSize'
 import { toast } from '../stores/useToastStore'
 import RiskBadge from '../components/shared/RiskBadge'
@@ -50,13 +50,15 @@ export default function QuickClean() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [showResult, setShowResult] = useState(false)
   const [cleaning, setCleaning] = useState(false)
-  const [cleanResult, setCleanResult] = useState({ released: 0, failed: 0, skipped: 0 })
+  const [cleanResult, setCleanResult] = useState<CleanResult>({ released: 0, failed: 0, skipped: 0 })
 
   const safeItems = useMemo(() => cleanItems.filter((i) => i.riskLevel === 'safe'), [cleanItems])
   const selectedItems = useMemo(() => cleanItems.filter((i) => i.selected), [cleanItems])
   const totalSize = useMemo(() => selectedItems.reduce((acc, i) => acc + i.size, 0), [selectedItems])
   const allSafeSelected = safeItems.length > 0 && safeItems.every((i) => i.selected)
   const canRunClean = Boolean(window.cleanC)
+  // 与「设置 → 删除文件先进回收站」联动，文案与真实行为保持一致
+  const useTrash = localStorage.getItem('cleanc_recycle_bin') !== 'false'
 
   useEffect(() => {
     refreshSystemData()
@@ -86,7 +88,9 @@ export default function QuickClean() {
         <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>快速清理</h1>
         <div className="flex items-center gap-3 mt-1">
           <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            {canRunClean ? '已选项目会优先移入回收站，风险项请确认后再勾选' : '网页预览仅展示数据，真实清理请使用桌面安装版'}
+            {canRunClean
+              ? (useTrash ? '已选项目将移入系统回收站（可恢复），风险项请确认后再勾选' : '当前为彻底删除模式（立即释放空间，不可恢复），可在设置中改为回收站模式')
+              : '网页预览仅展示数据，真实清理请使用桌面安装版'}
           </p>
           <span
             className="text-xs px-2 py-0.5 rounded-full"
@@ -201,11 +205,13 @@ export default function QuickClean() {
                 className="p-3 rounded-lg text-xs mb-4"
                 style={{ backgroundColor: 'rgba(124,58,237,0.08)', color: 'var(--color-ai-start)' }}
               >
-                安全策略：清理前会展示风险标签，执行时优先移入回收站；警告项请确认用途后再继续。
+                {useTrash
+                  ? '安全策略：本次清理将移入系统回收站，确认无误后可在回收站中最终清空；警告项请确认用途后再继续。'
+                  : '注意：当前为彻底删除模式，清理后不可恢复；如需保留恢复手段，请先在「设置」中开启回收站模式。'}
               </div>
               <div className="flex gap-2 justify-end">
                 <button className="btn-outline" onClick={() => setShowConfirm(false)}>取消</button>
-                <button className="btn-primary" onClick={handleClean}>确认安全清理</button>
+                <button className="btn-primary" onClick={handleClean}>{useTrash ? '确认安全清理' : '确认彻底删除'}</button>
               </div>
             </div>
           </div>
@@ -232,7 +238,9 @@ export default function QuickClean() {
                   </div>
                 </div>
                 <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>正在深度清理</h3>
-                <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>正在安全地将文件移至回收站...</p>
+                <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                  {useTrash ? '正在安全地将文件移至回收站...' : '正在彻底删除选中的文件...'}
+                </p>
               </Card>
             </div>
           </div>
@@ -254,7 +262,7 @@ export default function QuickClean() {
                 <h3 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>清理完成！</h3>
               </div>
               <p className="text-sm text-center mb-2" style={{ color: 'var(--color-text)' }}>
-                已移入回收站 <span className="font-bold text-lg" style={{ color: 'var(--color-primary)' }}>{formatSize(cleanResult.released)}</span>
+                {cleanResult.mode === 'trash' ? '已移入回收站' : '已彻底删除'} <span className="font-bold text-lg" style={{ color: 'var(--color-primary)' }}>{formatSize(cleanResult.released)}</span>
               </p>
               <p className="text-xs text-center mb-4" style={{ color: 'var(--color-text-secondary)' }}>
                 失败 {cleanResult.failed} 项，未匹配到的项目 {cleanResult.skipped} 项
@@ -263,7 +271,9 @@ export default function QuickClean() {
                 className="p-3 rounded-lg text-xs mb-4"
                 style={{ backgroundColor: 'rgba(124,58,237,0.08)', color: 'var(--color-ai-start)' }}
               >
-                下一步建议：回收站保留了本次清理内容，如确认无误可在系统回收站中最终清空。
+                {cleanResult.mode === 'trash'
+                  ? '下一步建议：回收站保留了本次清理内容，如确认无误可在系统回收站中最终清空，彻底释放空间。'
+                  : '本次清理已直接释放磁盘空间。空间仍不足时，可尝试「路径迁移」把大文件夹搬到其他盘。'}
               </div>
               <div className="flex gap-2 justify-end">
                 <button className="btn-outline" onClick={() => setShowResult(false)}>稍后再说</button>

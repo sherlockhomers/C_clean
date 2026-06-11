@@ -1,5 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { formatSize } from '../utils/formatSize'
+import { toast } from '../stores/useToastStore'
+import { useAIStore } from '../stores/useAIStore'
+import { useDiskStore } from '../stores/useDiskStore'
 import RiskBadge from '../components/shared/RiskBadge'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -8,12 +12,15 @@ import {
   File,
   Copy,
   Ghost,
-  FolderOpen,
   Bot,
   ExternalLink,
-  FolderSync,
   Ban,
   SlidersHorizontal,
+  Trash2,
+  CheckCircle2,
+  X,
+  AlertTriangle,
+  HardDrive,
 } from 'lucide-react'
 
 type ScanTab = 'large' | 'duplicate' | 'residual'
@@ -25,23 +32,117 @@ type ScanFile = {
   lastAccess: string
   type: ScanTab
   aiNote: string
+  protected?: boolean
+}
+
+const IGNORE_KEY = 'cleanc_ignored_paths'
+
+function loadIgnoredPaths(): string[] {
+  try {
+    const raw = localStorage.getItem(IGNORE_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 export default function DeepScan() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<ScanTab>('large')
   const [sizeThreshold, setSizeThreshold] = useState(50)
+  const [fullScan, setFullScan] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
   const [scanFiles, setScanFiles] = useState<ScanFile[]>([])
   const [scanSource, setScanSource] = useState<'demo' | 'system'>('system')
   const [scanError, setScanError] = useState<string | null>(null)
   const [currentScanningFile, setCurrentScanningFile] = useState<string | null>(null)
+  const [ignoredPaths, setIgnoredPaths] = useState<string[]>(() => loadIgnoredPaths())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showCleanConfirm, setShowCleanConfirm] = useState(false)
+  const [cleaning, setCleaning] = useState(false)
+  const useTrash = localStorage.getItem('cleanc_recycle_bin') !== 'false'
+
+  const handleIgnore = (file: ScanFile) => {
+    const next = Array.from(new Set([...ignoredPaths, file.path]))
+    setIgnoredPaths(next)
+    localStorage.setItem(IGNORE_KEY, JSON.stringify(next))
+    toast.success(`已忽略：${file.name}（后续扫描结果中不再显示）`)
+  }
+
+  const handleClearIgnored = () => {
+    setIgnoredPaths([])
+    localStorage.setItem(IGNORE_KEY, JSON.stringify([]))
+    toast.success('已清空忽略列表')
+  }
+
+  // 把文件交给 AI 助手分析（配置了大模型则真实问答，否则使用本地规则引擎）
+  const handleAskAI = (file: ScanFile) => {
+    useAIStore.getState().sendMessage(`请帮我分析这个文件：${file.path}（大小 ${formatSize(file.size)}，最后访问 ${file.lastAccess}）。它可能是什么？可以安全删除吗？`)
+    navigate('/ai-assistant')
+  }
 
   const filteredFiles = scanFiles.filter((f) => {
+    if (ignoredPaths.includes(f.path)) return false
     if (activeTab === 'large') return f.type === 'large'
     if (activeTab === 'duplicate') return f.type === 'duplicate'
     return f.type === 'residual'
   })
+
+  // 勾选与一键清理
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectableFiles = useMemo(() => filteredFiles.filter((f) => !f.protected), [filteredFiles])
+  const selectedFiles = useMemo(
+    () => selectableFiles.filter((f) => selectedIds.has(f.id)),
+    [selectableFiles, selectedIds]
+  )
+  const selectedSize = selectedFiles.reduce((acc, f) => acc + f.size, 0)
+  const allSelected = selectableFiles.length > 0 && selectableFiles.every((f) => selectedIds.has(f.id))
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allSelected) {
+        selectableFiles.forEach((f) => next.delete(f.id))
+      } else {
+        selectableFiles.forEach((f) => next.add(f.id))
+      }
+      return next
+    })
+  }
+
+  const handleCleanSelected = async () => {
+    if (!window.cleanC?.deleteItems || selectedFiles.length === 0) return
+    setShowCleanConfirm(false)
+    setCleaning(true)
+    try {
+      const result = await window.cleanC.deleteItems(selectedFiles.map((f) => f.path), { useTrash })
+      const okPaths = new Set(result.results.filter((r) => r.success).map((r) => r.path))
+      // 从结果列表中移除已删除项
+      setScanFiles((prev) => prev.filter((f) => !okPaths.has(f.path)))
+      setSelectedIds(new Set())
+
+      if (result.released > 0) {
+        toast.success(`已清理 ${okPaths.size} 项，释放 ${formatSize(result.released)}（${result.mode === 'trash' ? '已移入回收站' : '已彻底删除'}）`)
+      }
+      if (result.failed > 0) {
+        const firstError = result.results.find((r) => !r.success)
+        toast.warning(`${result.failed} 项清理失败${firstError?.error ? `：${firstError.error}` : ''}`)
+      }
+      void useDiskStore.getState().refreshHistory()
+    } finally {
+      setCleaning(false)
+    }
+  }
 
   const handleScan = async () => {
     if (!window.cleanC) {
@@ -81,11 +182,12 @@ export default function DeepScan() {
           })
         }
 
-        // 3. 发起真实的扫描
+        // 3. 发起真实的扫描（全盘模式扩大范围与时限）
         const files = await window.cleanC.scanLargeFiles({
           thresholdMB: sizeThreshold,
-          deadlineMs: 30000,
-          maxEntries: 180000,
+          deadlineMs: fullScan ? 120000 : 30000,
+          maxEntries: fullScan ? 600000 : 180000,
+          scope: fullScan ? 'full' : 'user',
         })
 
         // 4. 最终结果兜底并排序
@@ -95,14 +197,18 @@ export default function DeepScan() {
           return [...nonLarge, ...large].sort((a, b) => b.size - a.size) as ScanFile[]
         })
       } else if (activeTab === 'duplicate') {
-        setScanProgress(30)
         setCurrentScanningFile('正在扫描重复文件大小分组...')
-        
+
+        // 订阅主进程推送的真实扫描进度（遍历阶段 0-60%，哈希阶段 70-99%）
+        if (window.cleanC.onScanProgress) {
+          unsubscribeProgress = window.cleanC.onScanProgress((data: any) => {
+            setScanProgress(data.progress)
+            setCurrentScanningFile(data.currentFile)
+          })
+        }
+
         const files = await window.cleanC.scanDuplicateFiles()
-        
-        setScanProgress(70)
-        setCurrentScanningFile('正在计算快速哈希比对...')
-        
+
         setScanFiles((prev) => {
           const nonDup = prev.filter(f => f.type !== 'duplicate')
           return [...nonDup, ...files] as ScanFile[]
@@ -166,20 +272,46 @@ export default function DeepScan() {
       {/* Scan Config */}
       <Card className="p-5">
         <div className="flex items-center gap-5 flex-wrap">
-          <div className="flex items-center gap-3">
-            <SlidersHorizontal size={18} style={{ color: 'var(--color-text-secondary)' }} />
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>大文件阈值:</span>
-            <input
-              type="range"
-              min={10}
-              max={500}
-              value={sizeThreshold}
-              onChange={(e) => setSizeThreshold(Number(e.target.value))}
-              className="w-40 accent-orange-500"
-              aria-label="大文件扫描阈值"
-            />
-            <span className="text-sm font-bold w-16" style={{ color: 'var(--color-primary)' }}>{sizeThreshold} MB</span>
-          </div>
+          {activeTab === 'large' && (
+            <div className="flex items-center gap-3">
+              <SlidersHorizontal size={18} style={{ color: 'var(--color-text-secondary)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>大文件阈值:</span>
+              <input
+                type="range"
+                min={10}
+                max={500}
+                value={sizeThreshold}
+                onChange={(e) => setSizeThreshold(Number(e.target.value))}
+                className="w-40 accent-orange-500"
+                aria-label="大文件扫描阈值"
+              />
+              <span className="text-sm font-bold w-16" style={{ color: 'var(--color-primary)' }}>{sizeThreshold} MB</span>
+            </div>
+          )}
+          {activeTab === 'duplicate' && (
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              扫描用户目录中大于 1MB 的文件，按「大小 + 头尾内容哈希」识别疑似重复
+            </span>
+          )}
+          {activeTab === 'residual' && (
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              比对已安装软件列表与 AppData 特征库，找出已卸载软件的残留数据
+            </span>
+          )}
+          {activeTab === 'large' && (
+            <button
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors"
+              style={{
+                borderColor: fullScan ? 'var(--color-primary)' : 'var(--color-border)',
+                color: fullScan ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                backgroundColor: fullScan ? 'rgba(249,115,22,0.08)' : 'transparent',
+              }}
+              onClick={() => setFullScan((v) => !v)}
+              title="全盘扫描覆盖整个 C 盘（跳过 Windows 系统目录），耗时更长"
+            >
+              <HardDrive size={14} /> {fullScan ? '全盘扫描（C:\\ 全部）' : '快速扫描（用户目录）'}
+            </button>
+          )}
           <Button
             variant="primary"
             onClick={handleScan}
@@ -223,6 +355,13 @@ export default function DeepScan() {
         </div>
       )}
 
+      {ignoredPaths.length > 0 && (
+        <div className="p-3 rounded-lg text-xs flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50" style={{ color: 'var(--color-text-secondary)' }}>
+          <Ban size={12} /> 已忽略 {ignoredPaths.length} 项（不在结果中显示）
+          <button className="underline ml-auto" onClick={handleClearIgnored}>清空忽略列表</button>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--color-card)' }}>
         {tabConfig.map((tab) => (
@@ -240,6 +379,42 @@ export default function DeepScan() {
           </button>
         ))}
       </div>
+
+      {/* Selection Toolbar */}
+      {filteredFiles.length > 0 && (
+        <Card className="p-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0"
+              style={{
+                borderColor: allSelected ? 'var(--color-primary)' : 'var(--color-border)',
+                backgroundColor: allSelected ? 'var(--color-primary)' : 'transparent',
+              }}
+              onClick={toggleSelectAll}
+              aria-label={allSelected ? '取消全选' : '全选'}
+            >
+              {allSelected && <CheckCircle2 size={12} className="text-white" />}
+            </button>
+            <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              已选 <span className="font-bold" style={{ color: 'var(--color-text)' }}>{selectedFiles.length}</span> 项，
+              共 <span className="font-bold" style={{ color: 'var(--color-primary)' }}>{formatSize(selectedSize)}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              {useTrash ? '清理将移入回收站（可恢复）' : '当前为彻底删除模式'}
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setShowCleanConfirm(true)}
+              disabled={selectedFiles.length === 0 || cleaning || !window.cleanC}
+            >
+              <Trash2 size={14} /> {cleaning ? '清理中...' : '清理选中项'}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Results */}
       <div className="space-y-3">
@@ -261,6 +436,21 @@ export default function DeepScan() {
         {filteredFiles.map((file) => (
           <Card key={file.id} hoverable className="p-5">
             <div className="flex items-center gap-4">
+              {file.protected ? (
+                <span className="w-5 h-5 flex-shrink-0" title="系统保护文件，不可删除" />
+              ) : (
+                <button
+                  className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0"
+                  style={{
+                    borderColor: selectedIds.has(file.id) ? 'var(--color-primary)' : 'var(--color-border)',
+                    backgroundColor: selectedIds.has(file.id) ? 'var(--color-primary)' : 'transparent',
+                  }}
+                  onClick={() => toggleSelect(file.id)}
+                  aria-label={`选择 ${file.name}`}
+                >
+                  {selectedIds.has(file.id) && <CheckCircle2 size={12} className="text-white" />}
+                </button>
+              )}
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{ backgroundColor: 'rgba(249,115,22,0.08)' }}
@@ -293,34 +483,94 @@ export default function DeepScan() {
                   <ExternalLink size={16} style={{ color: 'var(--color-text-secondary)' }} />
                 </button>
                 <button
-                  className="p-2 rounded-lg transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 opacity-50 cursor-not-allowed"
-                  title="迁移功能暂未开放"
-                  aria-label={`${file.name} 迁移功能暂未开放`}
-                  disabled
-                >
-                  <FolderSync size={16} style={{ color: 'var(--color-text-secondary)' }} />
-                </button>
-                <button
-                  className="p-2 rounded-lg transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 opacity-50 cursor-not-allowed"
-                  title="忽略功能暂未开放"
-                  aria-label={`${file.name} 忽略功能暂未开放`}
-                  disabled
+                  className="p-2 rounded-lg transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+                  title="忽略此项（不再显示在扫描结果中）"
+                  aria-label={`忽略 ${file.name}`}
+                  onClick={() => handleIgnore(file)}
                 >
                   <Ban size={16} style={{ color: 'var(--color-text-secondary)' }} />
                 </button>
                 <button
-                  className="p-2 rounded-lg transition-colors hover:bg-purple-50 dark:hover:bg-purple-900/30 opacity-50 cursor-not-allowed"
-                  title="AI 分析暂未接入真实模型"
-                  aria-label={`${file.name} AI 分析暂未接入真实模型`}
-                  disabled
+                  className="p-2 rounded-lg transition-colors hover:bg-purple-50 dark:hover:bg-purple-900/30"
+                  title="让 AI 助手分析这个文件"
+                  aria-label={`让 AI 助手分析 ${file.name}`}
+                  onClick={() => handleAskAI(file)}
                 >
                   <Bot size={16} style={{ color: 'var(--color-ai-start)' }} />
                 </button>
+                {!file.protected && (
+                  <button
+                    className="p-2 rounded-lg transition-colors hover:bg-red-50 dark:hover:bg-red-900/30"
+                    title={useTrash ? '移入回收站' : '彻底删除'}
+                    aria-label={`删除 ${file.name}`}
+                    onClick={() => {
+                      setSelectedIds(new Set([file.id]))
+                      setShowCleanConfirm(true)
+                    }}
+                  >
+                    <Trash2 size={16} className="text-red-500" />
+                  </button>
+                )}
               </div>
             </div>
           </Card>
         ))}
       </div>
+
+      {/* Clean Confirm Dialog */}
+      {showCleanConfirm && selectedFiles.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="card-base p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--color-text)' }}>
+                <AlertTriangle size={18} className="text-amber-500" /> 确认清理 {selectedFiles.length} 项
+              </h3>
+              <button onClick={() => setShowCleanConfirm(false)} style={{ color: 'var(--color-text-secondary)' }} aria-label="关闭确认弹窗">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-sm mb-3" style={{ color: 'var(--color-text)' }}>
+              共 <span className="font-bold" style={{ color: 'var(--color-primary)' }}>{formatSize(selectedSize)}</span>，
+              {useTrash ? '将移入系统回收站，可在回收站中恢复。' : '将被彻底删除，不可恢复！'}
+            </p>
+            <div className="space-y-1.5 mb-4 max-h-44 overflow-y-auto">
+              {selectedFiles.slice(0, 30).map((f) => (
+                <div key={f.id} className="flex items-center gap-2 text-xs">
+                  <CheckCircle2 size={12} className="text-green-500 flex-shrink-0" />
+                  <span className="truncate" style={{ color: 'var(--color-text)' }}>{f.name}</span>
+                  <span className="ml-auto flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>{formatSize(f.size)}</span>
+                </div>
+              ))}
+              {selectedFiles.length > 30 && (
+                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>……以及另外 {selectedFiles.length - 30} 项</div>
+              )}
+            </div>
+            {selectedFiles.some((f) => f.type === 'duplicate') && (
+              <div className="p-3 rounded-lg text-xs mb-3 bg-amber-50 text-amber-700 border border-amber-200">
+                包含疑似重复文件：建议先用「打开位置」核对内容确为重复后再删除，每组请至少保留一份。
+              </div>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button className="btn-outline" onClick={() => setShowCleanConfirm(false)}>取消</button>
+              <button className="btn-primary" onClick={handleCleanSelected}>
+                {useTrash ? '确认移入回收站' : '确认彻底删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cleaning Overlay */}
+      {cleaning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm" style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)' }}>
+          <Card className="p-8 text-center flex flex-col items-center shadow-2xl border-none">
+            <div className="w-12 h-12 rounded-full border-4 border-transparent border-t-[var(--color-primary)] animate-spin mb-4" />
+            <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+              {useTrash ? '正在移入回收站...' : '正在彻底删除...'}
+            </p>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
