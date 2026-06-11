@@ -5,9 +5,11 @@
 :root {
   --color-primary: #F97316; /* Tailwind Orange 500 */
   --color-primary-light: #FB923C; /* Tailwind Orange 400 */
+  --color-primary-soft: rgba(249, 115, 22, 0.08);
   --color-ai-start: #8B5CF6; /* Tailwind Violet 500 */
   --color-ai-end: #3B82F6; /* Tailwind Blue 500 */
-  --color-bg: #F8FAFC; /* Tailwind Slate 50 */
+  --color-bg: #F6F8FB;
+  --color-bg-hover: #F1F5F9; /* Tailwind Slate 100 */
   --color-card: #FFFFFF;
   --color-sidebar: #FFFFFF;
   --color-text: #0F172A; /* Tailwind Slate 900 */
@@ -16,22 +18,36 @@
   --color-risk-safe: #10B981; /* Tailwind Emerald 500 */
   --color-risk-warning: #F59E0B; /* Tailwind Amber 500 */
   --color-risk-danger: #EF4444; /* Tailwind Red 500 */
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 2px 4px rgba(15, 23, 42, 0.05), 0 12px 28px -6px rgba(15, 23, 42, 0.12);
+  --ambient-bg:
+    radial-gradient(900px 480px at 8% -8%, rgba(249, 115, 22, 0.05), transparent 60%),
+    radial-gradient(820px 460px at 96% 4%, rgba(139, 92, 246, 0.05), transparent 58%),
+    linear-gradient(var(--color-bg), var(--color-bg));
 }
 
 [data-theme="dark"] {
   --color-primary: #F97316;
   --color-primary-light: #FB923C;
+  --color-primary-soft: rgba(251, 146, 60, 0.12);
   --color-ai-start: #A78BFA;
   --color-ai-end: #60A5FA;
-  --color-bg: #0F172A; /* Tailwind Slate 900 */
-  --color-card: #1E293B; /* Tailwind Slate 800 */
-  --color-sidebar: #1E293B;
+  --color-bg: #0B1220;
+  --color-bg-hover: #1E293B; /* Tailwind Slate 800 */
+  --color-card: #111A2C;
+  --color-sidebar: #0E1626;
   --color-text: #F8FAFC; /* Tailwind Slate 50 */
   --color-text-secondary: #94A3B8; /* Tailwind Slate 400 */
-  --color-border: #334155; /* Tailwind Slate 700 */
+  --color-border: #243349;
   --color-risk-safe: #34D399; /* Tailwind Emerald 400 */
   --color-risk-warning: #FBBF24; /* Tailwind Amber 400 */
   --color-risk-danger: #F87171; /* Tailwind Red 400 */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25), 0 6px 16px -4px rgba(0, 0, 0, 0.35);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 14px 32px -8px rgba(0, 0, 0, 0.5);
+  --ambient-bg:
+    radial-gradient(900px 480px at 8% -8%, rgba(249, 115, 22, 0.07), transparent 60%),
+    radial-gradient(820px 460px at 96% 4%, rgba(139, 92, 246, 0.08), transparent 58%),
+    linear-gradient(var(--color-bg), var(--color-bg));
 }
 
 * {
@@ -48,12 +64,15 @@
 body {
   font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
   background-color: var(--color-bg);
+  background-image: var(--ambient-bg);
+  background-attachment: fixed;
   color: var(--color-text);
   overflow: hidden;
   height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-variant-numeric: tabular-nums;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #root {
@@ -61,8 +80,14 @@ body {
   overflow: hidden;
 }
 
+::selection {
+  background: rgba(249, 115, 22, 0.22);
+  color: inherit;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -70,12 +95,19 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-text-secondary);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-text-secondary) 38%, transparent);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-secondary) 62%, transparent);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .gradient-primary {
@@ -101,13 +133,13 @@ body {
   background: var(--color-card);
   border-radius: 16px;
   border: 1px solid var(--color-border);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
 }
 
 .card-base:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
-  border-color: var(--color-primary-light);
+  box-shadow: var(--shadow-card-hover);
+  border-color: color-mix(in srgb, var(--color-primary-light) 55%, var(--color-border));
 }
 
 .btn-primary {

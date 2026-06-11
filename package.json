@@ -1,7 +1,7 @@
 {
   "name": "cleanc",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "CleanC - C盘清理助手，让C盘焕然一新",
   "main": "electron/main.js",
   "author": "CleanC Team",
@@ -62,6 +62,7 @@
       "sign": false,
       "signAndEditExecutable": false,
       "signingHashAlgorithms": [],
+      "requestedExecutionLevel": "requireAdministrator",
       "target": [
         {
           "target": "nsis",

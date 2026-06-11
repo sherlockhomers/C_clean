@@ -12,14 +12,18 @@ export default function AppLayout() {
   const location = useLocation()
 
   useEffect(() => {
+    const applyTheme = (isDark: boolean) => {
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+      // 同步 Electron 原生标题栏配色
+      window.cleanC?.setTitleBarTheme?.(isDark)
+    }
+
     const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+    applyTheme(isDark)
 
     if (theme === 'system') {
       const mq = window.matchMedia('(prefers-color-scheme: dark)')
-      const handler = (e: MediaQueryListEvent) => {
-        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light')
-      }
+      const handler = (e: MediaQueryListEvent) => applyTheme(e.matches)
       mq.addEventListener('change', handler)
       return () => mq.removeEventListener('change', handler)
     }
